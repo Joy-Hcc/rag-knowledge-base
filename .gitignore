@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# ChromaDB (vector DB - large, generated)
+chroma_db/
+
+# Uploaded documents
+documents/*.pdf
+documents/*.docx
+documents/*.txt
+!documents/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
