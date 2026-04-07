@@ -8,9 +8,9 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 LLM_MODEL = "deepseek-chat"
 
-# Embedding 配置（使用 bge-m3 本地模型）
-EMBEDDING_MODEL = "BAAI/bge-m3"
-EMBEDDING_DIM = 1024  # bge-m3 embedding 维度
+# Embedding 配置（使用 DeepSeek 的 embedding 服务）
+EMBEDDING_MODEL = "deepseek-embed"
+EMBEDDING_DIM = 1536  # DeepSeek embedding 维度
 
 # RAG 配置
 CHUNK_SIZE = 500
