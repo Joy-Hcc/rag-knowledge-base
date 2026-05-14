@@ -2,7 +2,6 @@
 
 import streamlit as st
 import requests
-from pathlib import Path
 
 API_URL = "http://localhost:8000"
 
@@ -149,7 +148,7 @@ with st.expander("📖 使用说明"):
 
     ### 注意事项
 
-    - 首次运行时，Embedding 模型会下载（约 1GB），请耐心等待
+    - 需要有效的 DeepSeek API Key，请确保 .env 配置正确
     - 建议单文档不超过 50MB
     - 如果回答较慢，请耐心等待（LLM 生成需要时间）
     """)
