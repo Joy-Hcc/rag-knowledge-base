@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from PyPDF2 import PdfReader
+import fitz  # pymupdf，中文 PDF 提取比 PyPDF2 强很多
 import docx
 
 
@@ -21,11 +21,11 @@ def load_document(file_path: str) -> str:
 
 
 def load_pdf(file_path: str) -> str:
-    """读取 PDF 文件"""
-    reader = PdfReader(file_path)
+    doc = fitz.open(file_path)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
+    for page in doc:
+        text += page.get_text() + "\n"
+    doc.close()
     return text
 
 
