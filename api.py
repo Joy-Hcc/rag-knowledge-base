@@ -70,10 +70,16 @@ class AnswerResponse(BaseModel):
     sources: list[dict]
 
 
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+
+
 @app.post("/upload", response_model=dict)
 async def upload_document(file: UploadFile = File(...)):
     """上传文档到知识库"""
-    # 保存文件
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}，仅支持 PDF/DOCX/TXT")
+
     upload_dir = "./documents"
     os.makedirs(upload_dir, exist_ok=True)
 

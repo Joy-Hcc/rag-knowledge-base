@@ -156,4 +156,4 @@ with st.expander("📖 使用说明"):
 
 # 页脚
 st.divider()
-st.caption("RAG 知识库问答系统 | 基于 DeepSeek + bge-m3 + ChromaDB")
+st.caption("RAG 知识库问答系统 | 基于 DeepSeek + ChromaDB")

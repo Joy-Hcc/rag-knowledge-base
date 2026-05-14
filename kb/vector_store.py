@@ -1,7 +1,6 @@
 # 使用 ChromaDB 存储和检索向量
 
 import chromadb
-from chromadb.config import Settings
 from .embeddings import Embeddings
 from config import CHROMA_PERSIST_DIRECTORY, COLLECTION_NAME
 
