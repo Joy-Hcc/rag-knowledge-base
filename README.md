@@ -6,10 +6,10 @@
 
 | 层 | 技术 |
 |---|------|
-| 前端 | Streamlit |
+| 前端 | Gradio |
 | 后端 API | FastAPI |
 | LLM | DeepSeek V4 Flash (1M context) |
-| 文档解析 | PyPDF2 / python-docx |
+| 文档解析 | pymupdf / python-docx |
 
 ## 快速开始
 
@@ -24,9 +24,9 @@ echo "DEEPSEEK_API_KEY=你的Key" > .env
 python api.py
 
 # 4. 启动前端（新终端）
-streamlit run app.py
+python app_gradio.py
 
-# 5. 访问 http://localhost:8501
+# 5. 访问 http://localhost:7860
 ```
 
 ## API
@@ -43,7 +43,7 @@ streamlit run app.py
 
 ```
 ├── api.py               # FastAPI 后端
-├── app.py               # Streamlit 前端
+├── app_gradio.py        # Gradio 前端
 ├── config.py            # 配置
 ├── document_loader.py   # 文档解析（PDF/Word/TXT）
 └── requirements.txt
