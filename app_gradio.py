@@ -43,14 +43,17 @@ def ask_question(question, history):
             if sources:
                 answer += f"\n\n---\n参考文档: {', '.join(sources)}"
 
-            history.append([question, answer])
+            history.append({"role": "user", "content": question})
+            history.append({"role": "assistant", "content": answer})
             return history, ""
         else:
             error = r.json().get("detail", "请求失败")
-            history.append([question, f"错误: {error}"])
+            history.append({"role": "user", "content": question})
+            history.append({"role": "assistant", "content": f"错误: {error}"})
             return history, ""
     except Exception as e:
-        history.append([question, f"请求失败: {e}"])
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": f"请求失败: {e}"})
         return history, ""
 
 

@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from document_loader import load_document
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_MODEL
+from rag import add_document, search, delete_document_chunks, get_stats as rag_stats
 
 llm_client: OpenAI = None
 documents: dict[str, str] = {}  # filename -> text
@@ -56,7 +57,8 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         text = load_document(file_path)
         documents[file.filename] = text
-        return {"message": "上传成功", "filename": file.filename, "chars": len(text)}
+        chunk_count = add_document(file.filename, text)
+        return {"message": "上传成功", "filename": file.filename, "chars": len(text), "chunks": chunk_count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文档解析失败: {e}")
 
@@ -68,9 +70,17 @@ async def ask_question(request: QuestionRequest):
     if not documents:
         return AnswerResponse(answer="还没有上传文档，请先在左侧上传。", sources=[])
 
+    # RAG检索：先找到相关chunk
+    hits = search(request.question)
+    if not hits:
+        return AnswerResponse(answer="未找到相关信息，请尝试换个问法。", sources=[])
+
+    # 拼接检索到的内容作为context
     context = "\n\n---\n\n".join(
-        f"【文档: {name}】\n{text}" for name, text in documents.items()
+        f"【文档: {h['filename']}】\n{h['text']}" for h in hits
     )
+    # 去重的来源文档名
+    source_files = list(dict.fromkeys(h["filename"] for h in hits))
 
     response = llm_client.chat.completions.create(
         model=LLM_MODEL,
@@ -78,18 +88,18 @@ async def ask_question(request: QuestionRequest):
             {
                 "role": "system",
                 "content": (
-                    "你是一个专业的知识库问答助手。请根据以下提供的文档内容回答用户问题。"
+                    "你是一个专业的知识库问答助手。请根据以下检索到的文档片段回答用户问题。"
                     "如果文档中没有相关信息，请直接说明。回答时标注信息来源文档。"
                 ),
             },
-            {"role": "user", "content": f"文档内容：\n{context}\n\n问题：{request.question}"},
+            {"role": "user", "content": f"检索到的文档片段：\n{context}\n\n问题：{request.question}"},
         ],
         max_tokens=2000,
     )
 
     return AnswerResponse(
         answer=response.choices[0].message.content,
-        sources=list(documents.keys()),
+        sources=source_files,
     )
 
 
@@ -104,10 +114,12 @@ async def health():
 
 @app.get("/stats")
 async def stats():
+    rag_info = rag_stats()
     return {
         "document_count": len(documents),
         "total_chars": sum(len(t) for t in documents.values()),
         "documents": list(documents.keys()),
+        "chunk_count": rag_info["chunk_count"],
     }
 
 
@@ -116,6 +128,7 @@ async def delete_document(filename: str):
     if filename not in documents:
         raise HTTPException(status_code=404, detail="文档不存在")
     del documents[filename]
+    delete_document_chunks(filename)
     file_path = os.path.join("./documents", filename)
     if os.path.exists(file_path):
         os.remove(file_path)
