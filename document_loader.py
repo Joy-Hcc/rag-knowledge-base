@@ -5,6 +5,8 @@ from pathlib import Path
 import fitz  # pymupdf，中文 PDF 提取比 PyPDF2 强很多
 import docx
 
+__all__ = ["load_document"]
+
 
 def load_document(file_path: str) -> str:
     """加载文档，返回纯文本内容"""
@@ -37,6 +39,11 @@ def load_docx(file_path: str) -> str:
 
 
 def load_txt(file_path: str) -> str:
-    """读取 TXT 文件"""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+    """读取 TXT 文件，自动检测编码"""
+    for encoding in ("utf-8", "gbk", "gb2312", "latin-1"):
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                return f.read()
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    raise ValueError("无法识别文件编码")

@@ -43,18 +43,21 @@ def ask_question(question, history):
             if sources:
                 answer += f"\n\n---\n参考文档: {', '.join(sources)}"
 
-            history.append({"role": "user", "content": question})
-            history.append({"role": "assistant", "content": answer})
-            return history, ""
+            return history + [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": answer},
+            ], ""
         else:
             error = r.json().get("detail", "请求失败")
-            history.append({"role": "user", "content": question})
-            history.append({"role": "assistant", "content": f"错误: {error}"})
-            return history, ""
+            return history + [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": f"错误: {error}"},
+            ], ""
     except Exception as e:
-        history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": f"请求失败: {e}"})
-        return history, ""
+        return history + [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": f"请求失败: {e}"},
+        ], ""
 
 
 def get_stats():
@@ -68,7 +71,7 @@ def get_stats():
             return f"文档数: {data['document_count']}  |  总字符: {data['total_chars']:,}\n\n{doc_list}"
         else:
             return "无法获取统计信息"
-    except:
+    except Exception:
         return "后端未连接"
 
 
@@ -97,7 +100,7 @@ with gr.Blocks(
     gr.Markdown(
         """
         # 📚 AI 知识库问答系统
-        上传文档，AI 通读全文后回答你的问题
+        上传文档，AI 检索相关内容后回答你的问题
         """,
         elem_classes="header"
     )
@@ -184,9 +187,9 @@ with gr.Blocks(
             ### 工作流程
             1. 上传 PDF / Word / TXT 文档
             2. 输入问题
-            3. AI 通读全文后回答，标注来源文档
+            3. AI 基于检索到的文档片段回答，标注来源文档
 
-            基于 DeepSeek V4 100万 token 上下文，可直接阅读完整文档。
+            基于 RAG 架构：智谱 Embedding 向量检索 + DeepSeek V4 生成答案。
             """
         )
 

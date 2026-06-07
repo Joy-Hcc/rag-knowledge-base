@@ -5,8 +5,8 @@ load_dotenv()
 
 # DeepSeek V4 API
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-LLM_MODEL = "deepseek-v4-flash"
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
 # 智谱Embedding配置
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")

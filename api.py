@@ -1,4 +1,6 @@
 import os
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -7,11 +9,16 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 from document_loader import load_document
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_MODEL
+from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_MODEL, MAX_DOC_SIZE
 from rag import add_document, search, delete_document_chunks, get_stats as rag_stats
 
-llm_client: OpenAI = None
+logger = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+
+llm_client: OpenAI | None = None
 documents: dict[str, str] = {}  # filename -> text
+_doc_lock = asyncio.Lock()
 
 
 @asynccontextmanager
@@ -20,12 +27,28 @@ async def lifespan(app: FastAPI):
     if DEEPSEEK_API_KEY:
         llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     else:
-        print("警告: 未设置 DEEPSEEK_API_KEY")
+        logger.warning("未设置 DEEPSEEK_API_KEY")
+    # 从磁盘恢复已上传的文档
+    upload_dir = "./documents"
+    if os.path.exists(upload_dir):
+        for fname in os.listdir(upload_dir):
+            fpath = os.path.join(upload_dir, fname)
+            if os.path.isfile(fpath) and os.path.splitext(fname)[1].lower() in ALLOWED_EXTENSIONS:
+                try:
+                    documents[fname] = load_document(fpath)
+                except Exception as e:
+                    logger.warning("恢复文档 %s 失败: %s", fname, e)
     yield
 
 
 app = FastAPI(title="AI 知识库问答系统", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,  # 不能与 allow_origins=["*"] 同时为 True
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class QuestionRequest(BaseModel):
@@ -37,9 +60,6 @@ class AnswerResponse(BaseModel):
     sources: list[str]
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
-
-
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -48,19 +68,28 @@ async def upload_document(file: UploadFile = File(...)):
 
     upload_dir = "./documents"
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
+    # 防止路径遍历：只取文件名部分
+    safe_name = os.path.basename(file.filename)
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="无效的文件名")
+    file_path = os.path.join(upload_dir, safe_name)
 
     content = await file.read()
+    if len(content) > MAX_DOC_SIZE:
+        raise HTTPException(status_code=400, detail=f"文件过大，最大允许 {MAX_DOC_SIZE // 1024 // 1024}MB")
     with open(file_path, "wb") as f:
         f.write(content)
 
     try:
         text = load_document(file_path)
-        documents[file.filename] = text
-        chunk_count = add_document(file.filename, text)
-        return {"message": "上传成功", "filename": file.filename, "chars": len(text), "chunks": chunk_count}
+        chunk_count = add_document(safe_name, text)  # embedding 成功才算完成
+        async with _doc_lock:
+            documents[safe_name] = text
+        return {"message": "上传成功", "filename": safe_name, "chars": len(text), "chunks": chunk_count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"文档解析失败: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"文档处理失败: {e}")
 
 
 @app.post("/query", response_model=AnswerResponse)
@@ -71,7 +100,7 @@ async def ask_question(request: QuestionRequest):
         return AnswerResponse(answer="还没有上传文档，请先在左侧上传。", sources=[])
 
     # RAG检索：先找到相关chunk
-    hits = search(request.question)
+    hits = await asyncio.to_thread(search, request.question)
     if not hits:
         return AnswerResponse(answer="未找到相关信息，请尝试换个问法。", sources=[])
 
@@ -82,7 +111,8 @@ async def ask_question(request: QuestionRequest):
     # 去重的来源文档名
     source_files = list(dict.fromkeys(h["filename"] for h in hits))
 
-    response = llm_client.chat.completions.create(
+    response = await asyncio.to_thread(
+        llm_client.chat.completions.create,
         model=LLM_MODEL,
         messages=[
             {
@@ -125,16 +155,19 @@ async def stats():
 
 @app.delete("/documents/{filename}")
 async def delete_document(filename: str):
-    if filename not in documents:
-        raise HTTPException(status_code=404, detail="文档不存在")
-    del documents[filename]
-    delete_document_chunks(filename)
-    file_path = os.path.join("./documents", filename)
+    safe_name = os.path.basename(filename)
+    async with _doc_lock:
+        if safe_name not in documents:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        del documents[safe_name]
+    delete_document_chunks(safe_name)
+    file_path = os.path.join("./documents", safe_name)
     if os.path.exists(file_path):
         os.remove(file_path)
-    return {"message": "已删除", "filename": filename}
+    return {"message": "已删除", "filename": safe_name}
 
 
 if __name__ == "__main__":
     import uvicorn
+    # 监听 0.0.0.0 仅用于开发/演示，生产环境应限制为 127.0.0.1 或由反向代理暴露
     uvicorn.run(app, host="0.0.0.0", port=8000)

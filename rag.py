@@ -7,6 +7,8 @@ from config import (
     CHUNK_SIZE, CHUNK_OVERLAP, TOP_K,
 )
 
+EMBED_BATCH_SIZE = 20  # 智谱API单次最大处理量
+
 # Chroma向量库（本地持久化）
 _chroma_client = chromadb.PersistentClient(path="./chroma_db")
 _collection = _chroma_client.get_or_create_collection(
@@ -14,8 +16,8 @@ _collection = _chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"},
 )
 
-# Embedding客户端（复用DeepSeek API）
-_embed_client: OpenAI = None
+# Embedding客户端（智谱API）
+_embed_client: OpenAI | None = None
 
 
 def _get_embed_client() -> OpenAI:
@@ -39,7 +41,7 @@ def chunk_text(text: str) -> list[str]:
 
 
 def get_embedding(text: str) -> list[float]:
-    """调用DeepSeek embedding API获取向量"""
+    """调用智谱embedding API获取向量"""
     client = _get_embed_client()
     response = client.embeddings.create(
         input=text,
@@ -54,8 +56,16 @@ def add_document(filename: str, text: str) -> int:
     if not chunks:
         return 0
 
-    # 生成所有chunk的embedding
-    embeddings = [get_embedding(chunk) for chunk in chunks]
+    # 删除旧的同名文档chunks，避免重复ID报错
+    _collection.delete(where={"filename": filename})
+
+    # 批量生成embedding（分片调用，避免API限制）
+    client = _get_embed_client()
+    embeddings = []
+    for i in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[i:i + EMBED_BATCH_SIZE]
+        response = client.embeddings.create(input=batch, model=EMBEDDING_MODEL)
+        embeddings.extend(item.embedding for item in response.data)
 
     # 存入Chroma
     ids = [f"{filename}::chunk_{i}" for i in range(len(chunks))]
@@ -96,11 +106,9 @@ def delete_document_chunks(filename: str):
 def get_stats() -> dict:
     """获取向量库统计"""
     count = _collection.count()
-    # 获取所有文档名
-    all_data = _collection.get()
-    filenames = set()
-    for meta in all_data["metadatas"]:
-        filenames.add(meta["filename"])
+    # 只取 metadatas，不加载 documents 内容，减少内存开销
+    all_data = _collection.get(include=["metadatas"])
+    filenames = {meta["filename"] for meta in all_data["metadatas"]}
     return {
         "chunk_count": count,
         "documents": sorted(filenames),
