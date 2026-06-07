@@ -25,9 +25,13 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
             📄 {doc}
           </span>
           <button
-            onClick={() => onDelete(doc)}
+            onClick={() => {
+              if (window.confirm(`确认删除文档「${doc}」？此操作不可撤销。`)) {
+                onDelete(doc);
+              }
+            }}
+            aria-label={`删除文档 ${doc}`}
             className="text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-            title="删除文档"
           >
             ✕
           </button>

@@ -1,4 +1,6 @@
 const API_BASE = "/api";
+const QUERY_TIMEOUT = 60_000; // LLM 推理较慢，给 60s
+const DEFAULT_TIMEOUT = 10_000;
 
 export interface QueryResponse {
   answer: string;
@@ -19,55 +21,66 @@ export interface UploadResponse {
   chunks: number;
 }
 
+async function request<T>(
+  url: string,
+  options: RequestInit = {},
+  timeout = DEFAULT_TIMEOUT
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `请求失败 (${res.status})`);
+    }
+
+    return res.json();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("请求超时，请稍后重试");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function uploadDocument(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/upload`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "上传失败" }));
-    throw new Error(err.detail || "上传失败");
-  }
-
-  return res.json();
+  return request<UploadResponse>(
+    `${API_BASE}/upload`,
+    { method: "POST", body: formData },
+    30_000 // 上传可能较慢
+  );
 }
 
 export async function query(question: string): Promise<QueryResponse> {
-  const res = await fetch(`${API_BASE}/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "请求失败" }));
-    throw new Error(err.detail || "请求失败");
-  }
-
-  return res.json();
+  return request<QueryResponse>(
+    `${API_BASE}/query`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    },
+    QUERY_TIMEOUT
+  );
 }
 
 export async function getStats(): Promise<StatsResponse> {
-  const res = await fetch(`${API_BASE}/stats`);
-
-  if (!res.ok) {
-    throw new Error("获取统计信息失败");
-  }
-
-  return res.json();
+  return request<StatsResponse>(`${API_BASE}/stats`);
 }
 
 export async function deleteDocument(filename: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(filename)}`, {
-    method: "DELETE",
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "删除失败" }));
-    throw new Error(err.detail || "删除失败");
-  }
+  await request<Record<string, never>>(
+    `${API_BASE}/documents/${encodeURIComponent(filename)}`,
+    { method: "DELETE" }
+  );
 }

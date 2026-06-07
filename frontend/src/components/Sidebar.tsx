@@ -7,12 +7,13 @@ import type { StatsResponse } from "@/lib/api";
 
 interface SidebarProps {
   stats: StatsResponse | null;
+  statsLoading: boolean;
   onUpload: (file: File) => Promise<void>;
   onDelete: (filename: string) => Promise<void>;
   onRefresh: () => Promise<void>;
 }
 
-export default function Sidebar({ stats, onUpload, onDelete, onRefresh }: SidebarProps) {
+export default function Sidebar({ stats, statsLoading, onUpload, onDelete, onRefresh }: SidebarProps) {
   return (
     <aside className="w-72 border-r border-border bg-sidebar flex flex-col shrink-0">
       <div className="p-4 space-y-4 flex-1 overflow-auto">
@@ -33,7 +34,11 @@ export default function Sidebar({ stats, onUpload, onDelete, onRefresh }: Sideba
               刷新
             </button>
           </div>
-          <DocumentList documents={stats?.documents ?? []} onDelete={onDelete} />
+          {statsLoading ? (
+            <div className="text-sm text-muted py-4 text-center">加载中...</div>
+          ) : (
+            <DocumentList documents={stats?.documents ?? []} onDelete={onDelete} />
+          )}
         </div>
       </div>
 

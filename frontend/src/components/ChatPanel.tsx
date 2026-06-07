@@ -30,8 +30,8 @@ export default function ChatPanel({ messages }: ChatPanelProps) {
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
-      {messages.map((msg, i) => (
-        <ChatMessage key={i} message={msg} />
+      {messages.map((msg) => (
+        <ChatMessage key={msg.id} message={msg} />
       ))}
       <div ref={bottomRef} />
     </div>
