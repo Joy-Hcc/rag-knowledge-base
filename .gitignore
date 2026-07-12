@@ -6,6 +6,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
+.coverage
+.pytest_cache/
 
 # ChromaDB (vector DB - large, generated)
 chroma_db/

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
@@ -17,6 +17,9 @@ export default function Home() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  // 用 ref 存 conversationId，避免 state 异步更新导致竞态
+  const conversationRef = useRef<string | undefined>(undefined);
 
   // 加载统计信息
   const refreshStats = useCallback(async () => {
@@ -36,6 +39,12 @@ export default function Home() {
   useEffect(() => {
     refreshStats();
   }, [refreshStats]);
+
+  // 新建对话
+  const handleNewConversation = useCallback(() => {
+    conversationRef.current = undefined;
+    setMessages([]);
+  }, []);
 
   // 上传文档
   const handleUpload = useCallback(
@@ -65,39 +74,72 @@ export default function Home() {
     [refreshStats]
   );
 
-  // 发送问题
+  // 发送问题（SSE 流式）
   const handleSend = useCallback(async (question: string) => {
+    // 添加用户消息
     setMessages((prev) => [
       ...prev,
       { id: nextId(), role: "user", content: question },
     ]);
 
+    // 添加一个空的 assistant 消息占位
+    const assistantId = nextId();
+    setMessages((prev) => [
+      ...prev,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
+
+    setIsStreaming(true);
+
     try {
-      const res = await api.query(question);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: "assistant",
-          content: res.answer,
-          sources: res.sources,
+      await api.queryStream(question, conversationRef.current, {
+        onToken: (token: string) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, content: msg.content + token }
+                : msg
+            )
+          );
         },
-      ]);
+        onDone: (convId: string, sources: string[]) => {
+          // 立即更新 ref（同步，无竞态）
+          conversationRef.current = convId;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, sources }
+                : msg
+            )
+          );
+          setIsStreaming(false);
+        },
+        onError: (err: string) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, content: `请求失败: ${err}` }
+                : msg
+            )
+          );
+          setIsStreaming(false);
+        },
+      });
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: "assistant",
-          content: `请求失败: ${err instanceof Error ? err.message : "未知错误"}`,
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: `请求失败: ${err instanceof Error ? err.message : "未知错误"}` }
+            : msg
+        )
+      );
+      setIsStreaming(false);
     }
   }, []);
 
   return (
     <div className="h-screen flex flex-col">
-      <Header />
+      <Header onNewConversation={handleNewConversation} hasConversation={messages.length > 0} />
       {error && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600 flex items-center justify-between">
           <span>{error}</span>
@@ -116,7 +158,7 @@ export default function Home() {
         />
         <main className="flex-1 flex flex-col bg-background">
           <ChatPanel messages={messages} />
-          <ChatInput onSend={handleSend} />
+          <ChatInput onSend={handleSend} disabled={isStreaming} />
         </main>
       </div>
     </div>

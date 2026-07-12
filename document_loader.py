@@ -1,6 +1,5 @@
 # 支持加载 PDF、DOCX、TXT 格式的文档
 
-import os
 from pathlib import Path
 import fitz  # pymupdf，中文 PDF 提取比 PyPDF2 强很多
 import docx
@@ -23,11 +22,10 @@ def load_document(file_path: str) -> str:
 
 
 def load_pdf(file_path: str) -> str:
-    doc = fitz.open(file_path)
-    text = ""
-    for page in doc:
-        text += page.get_text() + "\n"
-    doc.close()
+    with fitz.open(file_path) as doc:
+        text = ""
+        for page in doc:
+            text += page.get_text() + "\n"
     return text
 
 
@@ -46,4 +44,6 @@ def load_txt(file_path: str) -> str:
                 return f.read()
         except (UnicodeDecodeError, UnicodeError):
             continue
+    # latin-1 可以解码任何字节序列，理论上不会到达这里
+    # 保留作为防御性兜底
     raise ValueError("无法识别文件编码")
