@@ -35,20 +35,31 @@ npm run dev
 # 5. 访问 http://localhost:3000
 ```
 
+## Docker 一键启动
+
+```bash
+# 前提：已配置 .env（同上）
+docker compose up --build
+
+# 访问 http://localhost:3000
+```
+
+`chroma_db/`（向量库）和 `documents/`（上传的文档）通过 volume 持久化，重建容器不丢数据。
+
 ## 工作原理
 
 ```
 用户提问
    ↓
 混合检索
-├── 向量检索（语义相似度）
+├── 向量检索（语义相似度，低于阈值的片段直接丢弃）
 └── BM25 检索（关键词匹配）
    ↓
-RRF 融合排序
+两路分数归一化后加权融合（BM25_WEIGHT 可调）
    ↓
 LLM Re-ranking（相关性重排）
    ↓
-Top-N 文档片段 + 对话历史
+Top-N 文档片段 + 对话历史（按字符预算截断）
    ↓
 LLM 生成回答（流式输出）
 ```
@@ -103,3 +114,13 @@ npm test
 | `ZHIPU_API_KEY` | ✅ | 智谱 AI API Key（用于 Embedding） |
 | `DEEPSEEK_BASE_URL` | ❌ | DeepSeek API 地址（默认官方） |
 | `LLM_MODEL` | ❌ | LLM 模型名（默认 deepseek-v4-flash） |
+| `API_KEY` | ❌ | 接口鉴权密钥。设置后除 `/health` 外所有接口需携带 `X-API-Key` 请求头；前端部署时配置同名 `API_KEY` 环境变量，由 Next.js 服务端 middleware 注入（不进入浏览器 bundle） |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | ❌ | 分块大小与重叠字符数（默认 500 / 50） |
+| `TOP_K` / `RERANK_TOP_N` | ❌ | 召回数与重排后保留数（默认 10 / 5） |
+| `ENABLE_BM25` / `BM25_WEIGHT` | ❌ | 是否启用关键词检索及融合权重（默认 true / 0.3） |
+| `ENABLE_RERANK` | ❌ | 是否启用 LLM 重排（默认 true） |
+| `SIMILARITY_THRESHOLD` | ❌ | 向量检索相关性门槛，cosine 距离超过该值丢弃（默认 0.65，0 表示不过滤） |
+| `MAX_DOC_SIZE_MB` | ❌ | 单文件大小上限 MB（默认 10） |
+| `MAX_CHUNKS_PER_DOC` | ❌ | 单文档最大 chunk 数（默认 2000） |
+| `MAX_HISTORY_TURNS` / `MAX_HISTORY_CHARS` | ❌ | 多轮对话保留轮数与历史字符预算（默认 10 / 6000） |
+| `DOCUMENTS_DIR` / `CHROMA_DIR` | ❌ | 文档与向量库存储路径（默认 ./documents、./chroma_db） |

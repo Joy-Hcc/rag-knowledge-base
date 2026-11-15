@@ -25,3 +25,6 @@ documents/*.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# 文档预览图（误提交历史遗留）
+documents/*.png
