@@ -46,6 +46,23 @@ docker compose up --build
 
 `chroma_db/`（向量库）和 `documents/`（上传的文档）通过 volume 持久化，重建容器不丢数据。
 
+## 在服务器 / 云电脑上长期运行
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+cd frontend && npm install && npm run build && cd ..
+
+./start.sh     # 启动后端(127.0.0.1:8000) + 前端(3000)，日志写入 logs/
+./stop.sh      # 停止
+```
+
+- 后端只监听 `127.0.0.1:8000`，浏览器统一访问 `http://localhost:3000`，由 Next.js 的 `/api` 代理转发并在服务端注入 `X-API-Key`
+- 若机器上配置了 SOCKS 代理（`ALL_PROXY=socks5://...`），openai/httpx 需要额外装 `pip install socksio`，否则启动时报 `ImportError: Using SOCKS proxy`
+- 需要开机自启时，把 `start.sh` 写进 `~/.config/autostart/*.desktop`（Linux 桌面）或 systemd unit
+
+
 ## 工作原理
 
 ```
