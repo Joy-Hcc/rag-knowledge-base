@@ -1,4 +1,4 @@
-interface StatsCardProps {
+﻿interface StatsCardProps {
   documentCount: number;
   totalChars: number;
   chunkCount: number;
@@ -6,7 +6,7 @@ interface StatsCardProps {
 
 export default function StatsCard({ documentCount, totalChars, chunkCount }: StatsCardProps) {
   return (
-    <div className="bg-accent-light rounded-lg p-3 space-y-1">
+    <div className="bg-white rounded-lg p-3 space-y-2 border border-border shadow-sm">
       <div className="flex justify-between text-sm">
         <span className="text-muted">文档数</span>
         <span className="font-medium">{documentCount}</span>

@@ -10,7 +10,8 @@ describe('Header', () => {
 
   it('renders subtitle', () => {
     render(<Header />);
-    expect(screen.getByText('上传文档，向 AI 提问')).toBeInTheDocument();
+    // 移动端/桌面端各渲染一份副标题（响应式显隐）
+    expect(screen.getAllByText('上传文档，向 AI 提问').length).toBeGreaterThan(0);
   });
 
   it('shows new conversation button when hasConversation is true', () => {

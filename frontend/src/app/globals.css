@@ -1,14 +1,16 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #1a1a1a;
-  --sidebar: #f5f5f5;
-  --border: #e5e5e5;
+  --background: #f7f7f4;
+  --foreground: #18181b;
+  --sidebar: #efeee8;
+  --border: #dedbd2;
   --accent: #2563eb;
-  --accent-light: #eff6ff;
-  --muted: #737373;
+  --accent-light: #e8f0ff;
+  --muted: #71717a;
   --surface: #ffffff;
+  --surface-soft: #fbfaf6;
+  --success: #0f766e;
   --radius: 8px;
 }
 
@@ -21,14 +23,26 @@
   --color-accent-light: var(--accent-light);
   --color-muted: var(--muted);
   --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+button,
+textarea,
+input {
+  font: inherit;
 }
 
 /* 滚动条样式 */
@@ -44,4 +58,77 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #a3a3a3;
+}
+
+/* Markdown 渲染样式（assistant 消息） */
+.markdown-body {
+  line-height: 1.7;
+  word-break: break-word;
+}
+.markdown-body p {
+  margin: 0 0 0.5em;
+}
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.4em;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.15em 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.markdown-body code {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+  font-family: var(--font-mono), monospace;
+}
+.markdown-body pre {
+  background: #18181b;
+  color: #f4f4f5;
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8em;
+  color: var(--muted);
+  margin: 0.5em 0;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.3em 0.7em;
+}
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: underline;
 }

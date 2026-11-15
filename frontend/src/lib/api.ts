@@ -65,7 +65,7 @@ export async function uploadDocument(file: File): Promise<UploadResponse> {
   return request<UploadResponse>(
     `${API_BASE}/upload`,
     { method: "POST", body: formData },
-    30_000 // 上传可能较慢
+    180_000 // 解析 + embedding 可能较慢
   );
 }
 
@@ -156,6 +156,9 @@ export async function queryStream(
           const event = JSON.parse(jsonStr);
 
           if (event.type === "token") {
+            callbacks.onToken(event.content);
+          } else if (event.type === "answer") {
+            // 后端在"没有文档 / 没有命中"时直接返回整段答案，同样按内容追加
             callbacks.onToken(event.content);
           } else if (event.type === "done") {
             receivedDone = true;

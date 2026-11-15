@@ -62,4 +62,19 @@ describe('ChatMessage', () => {
     render(<ChatMessage message={message} />);
     expect(screen.getByText('请求失败: 网络错误')).toBeInTheDocument();
   });
+
+  it('生成结束但没有来源时不再显示光标/加载动画', () => {
+    const message: Message = {
+      id: '6',
+      role: 'assistant',
+      content: '未找到相关信息，请尝试换个问法。',
+      sources: [],
+      pending: false,
+    };
+
+    const { container } = render(<ChatMessage message={message} />);
+    expect(screen.getByText('未找到相关信息，请尝试换个问法。')).toBeInTheDocument();
+    expect(container.querySelector('.animate-bounce')).toBeNull();
+    expect(container.querySelector('.animate-pulse')).toBeNull();
+  });
 });

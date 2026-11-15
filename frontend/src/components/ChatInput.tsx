@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect } from "react";
 
@@ -33,8 +33,8 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-border bg-surface p-4">
-      <div className="flex gap-2 items-end">
+    <div className="border-t border-border bg-surface p-3 sm:p-4">
+      <div className="mx-auto flex max-w-4xl gap-2 items-end">
         <textarea
           ref={textareaRef}
           value={input}
@@ -48,12 +48,12 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           placeholder="输入问题，Enter 发送，Shift+Enter 换行"
           disabled={disabled || isLoading}
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-50"
+          className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-6 shadow-inner shadow-zinc-200/40 focus:outline-none focus:ring-2 focus:ring-accent/25 focus:border-accent disabled:opacity-50"
         />
         <button
           onClick={handleSend}
           disabled={!input.trim() || isLoading || disabled}
-          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

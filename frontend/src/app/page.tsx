@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "@/components/Header";
@@ -86,7 +86,7 @@ export default function Home() {
     const assistantId = nextId();
     setMessages((prev) => [
       ...prev,
-      { id: assistantId, role: "assistant", content: "" },
+      { id: assistantId, role: "assistant", content: "", pending: true },
     ]);
 
     setIsStreaming(true);
@@ -108,7 +108,7 @@ export default function Home() {
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantId
-                ? { ...msg, sources }
+                ? { ...msg, sources, pending: false }
                 : msg
             )
           );
@@ -118,7 +118,7 @@ export default function Home() {
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantId
-                ? { ...msg, content: `请求失败: ${err}` }
+                ? { ...msg, content: `请求失败: ${err}`, pending: false }
                 : msg
             )
           );
@@ -129,7 +129,7 @@ export default function Home() {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
-            ? { ...msg, content: `请求失败: ${err instanceof Error ? err.message : "未知错误"}` }
+            ? { ...msg, content: `请求失败: ${err instanceof Error ? err.message : "未知错误"}`, pending: false }
             : msg
         )
       );
@@ -138,17 +138,17 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Header onNewConversation={handleNewConversation} hasConversation={messages.length > 0} />
       {error && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600" aria-label="关闭错误提示">
             ✕
           </button>
         </div>
       )}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <Sidebar
           stats={stats}
           statsLoading={statsLoading}
@@ -156,7 +156,7 @@ export default function Home() {
           onDelete={handleDelete}
           onRefresh={refreshStats}
         />
-        <main className="flex-1 flex flex-col bg-background">
+        <main className="flex-1 min-h-0 flex flex-col bg-background">
           <ChatPanel messages={messages} />
           <ChatInput onSend={handleSend} disabled={isStreaming} />
         </main>

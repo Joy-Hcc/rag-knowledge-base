@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRef, useState, useCallback } from "react";
 
-const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_SIZE = 10 * 1024 * 1024; // 10MB（与后端 MAX_DOC_SIZE_MB 一致）
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 
 interface UploadZoneProps {
@@ -58,10 +58,10 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
 
   return (
     <div
-      className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+      className={`border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors bg-white/60 ${
         isDragging
           ? "border-accent bg-accent-light"
-          : "border-border hover:border-accent/50"
+          : "border-border hover:border-accent/50 hover:bg-white"
       }`}
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => {
@@ -92,7 +92,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
         </div>
       ) : (
         <div>
-          <p className="text-sm text-muted">
+          <p className="text-sm font-medium text-foreground">
             拖拽文件到这里，或点击选择
           </p>
           <p className="text-xs text-muted mt-1">

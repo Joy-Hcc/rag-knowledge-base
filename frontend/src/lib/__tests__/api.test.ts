@@ -5,6 +5,22 @@ import * as api from '../api';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+/** 构造一个只吐指定 SSE 事件的响应 */
+function sseResponse(events: object[]) {
+  const payload = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+  return {
+    ok: true,
+    status: 200,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload));
+        controller.close();
+      },
+    }),
+    json: async () => ({}),
+  };
+}
+
 describe('API', () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -102,6 +118,50 @@ describe('API', () => {
 
       const result = await api.query('什么是AI？');
       expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('queryStream', () => {
+    it('渲染后端 answer 事件（空知识库 / 未命中）', async () => {
+      mockFetch.mockResolvedValueOnce(
+        sseResponse([
+          { type: 'answer', content: '还没有上传文档，请先在左侧上传。' },
+          { type: 'done', conversation_id: 'c1', sources: [] },
+        ])
+      );
+
+      const tokens: string[] = [];
+      let done = false;
+      await api.queryStream('q', undefined, {
+        onToken: (t) => tokens.push(t),
+        onDone: () => {
+          done = true;
+        },
+        onError: (e) => {
+          throw new Error('unexpected onError: ' + e);
+        },
+      });
+
+      expect(tokens.join('')).toBe('还没有上传文档，请先在左侧上传。');
+      expect(done).toBe(true);
+    });
+
+    it('流结束但没有 done 事件时报告连接中断', async () => {
+      mockFetch.mockResolvedValueOnce(
+        sseResponse([{ type: 'token', content: '半截' }])
+      );
+
+      const errors: string[] = [];
+      await api.queryStream('q', undefined, {
+        onToken: () => {},
+        onDone: () => {
+          throw new Error('unexpected onDone');
+        },
+        onError: (e) => errors.push(e),
+      });
+
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toContain('连接中断');
     });
   });
 });
