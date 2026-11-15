@@ -1,14 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.BACKEND_URL || "http://localhost:8000"}/:path*`,
-      },
-    ];
-  },
-};
+// /api 代理由 src/middleware.ts 处理（服务端注入鉴权头）
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

@@ -1,0 +1,13 @@
+.git
+.env
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+chroma_db/
+documents/
+frontend/
+.workbuddy/
+.claude/
+*.md
+tests/
