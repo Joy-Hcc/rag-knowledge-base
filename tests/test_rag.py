@@ -64,6 +64,27 @@ class TestChunkText:
         text = "\n\n   \n\n\n\n"
         assert chunk_text(text) == []
 
+    def test_single_huge_sentence_is_capped(self):
+        """单句超长（如无标点的表格）必须被切成 <= CHUNK_SIZE，否则 embedding 会 400"""
+        chunks = chunk_text("A" * 30000 + "。" + "B。")
+        assert chunks
+        assert all(len(c) <= rag.CHUNK_SIZE for c in chunks)
+        assert "B。" in chunks[-1]
+
+    def test_overlap_between_sentence_chunks(self):
+        """长段落按句切分时，相邻块应保留尾部重叠"""
+        text = "".join(f"这是第{i}句话，内容足够长用于凑满一个分块的长度限制。" for i in range(40))
+        chunks = chunk_text(text)
+        assert len(chunks) >= 2
+        assert chunks[0][-50:] in chunks[1]
+
+    def test_short_paragraphs_not_over_fragmented(self):
+        """短段落应尽量合并，而不是每段一个块"""
+        text = "\n\n".join(["短段落内容。" * 5] * 8)
+        chunks = chunk_text(text)
+        assert len(chunks) <= 3
+        assert all(c.strip() for c in chunks)
+
 
 class TestTokenize:
     def test_chinese_text(self):
@@ -167,6 +188,17 @@ class TestMergeResults:
     def test_empty_inputs(self):
         assert _merge_results([], []) == []
 
+    def test_bm25_hit_survives_full_vector_list(self):
+        """回归：10 条向量结果时，强 BM25 命中必须仍能进最终 Top-K"""
+        vector = [
+            {"text": f"v{i}", "filename": "a.txt", "distance": 0.10 + i * 0.01}
+            for i in range(10)
+        ]
+        bm25 = [{"text": "关键词精确命中", "filename": "b.txt", "score": 12.0}]
+        merged = _merge_results(vector, bm25)
+        assert len(merged) <= 10
+        assert any(h["text"] == "关键词精确命中" for h in merged)
+
 
 class TestBuildBM25Index:
     """BM25 索引构建测试"""
@@ -216,6 +248,21 @@ class TestVectorSearch:
         assert len(results) == 2
         assert results[0]["filename"] == "a.txt"
 
+    @patch("rag.get_embedding")
+    @patch("rag._collection")
+    def test_similarity_threshold_filters(self, mock_coll, mock_embed):
+        """距离超过阈值的 chunk 应被丢弃，避免"不相关也硬答"""
+        mock_coll.count.return_value = 3
+        mock_embed.return_value = [0.1] * 8
+        mock_coll.query.return_value = {
+            "ids": [["id1", "id2", "id3"]],
+            "documents": [["相关", "勉强", "完全无关"]],
+            "metadatas": [[{"filename": "a.txt"}] * 3],
+            "distances": [[0.2, 0.6, 1.5]],
+        }
+        results = rag._vector_search("query")
+        assert [h["text"] for h in results] == ["相关", "勉强"]
+
 
 class TestAddDocument:
     """文档入库测试"""
@@ -245,6 +292,15 @@ class TestAddDocument:
     def test_add_whitespace_only(self, mock_get_client):
         count = rag.add_document("ws.txt", "   \n\n   ")
         assert count == 0
+
+    @patch("rag._get_embed_client")
+    def test_add_document_rejects_too_many_chunks(self, mock_get_client, monkeypatch):
+        """chunk 数超过上限时应抛 ValueError，而不是把 embedding 预算烧光"""
+        monkeypatch.setattr(rag, "MAX_CHUNKS_PER_DOC", 2)
+        text = "\n\n".join(["第一段内容。" * 50, "第二段内容。" * 50, "第三段内容。" * 50])
+        with pytest.raises(ValueError, match="上限"):
+            rag.add_document("big.txt", text)
+        mock_get_client.assert_not_called()
 
 
 class TestSearch:

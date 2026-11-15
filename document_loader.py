@@ -22,18 +22,15 @@ def load_document(file_path: str) -> str:
 
 
 def load_pdf(file_path: str) -> str:
+    # 页与页之间用空行分隔，让 rag.chunk_text 能识别段落边界
     with fitz.open(file_path) as doc:
-        text = ""
-        for page in doc:
-            text += page.get_text() + "\n"
-    return text
+        return "\n\n".join(page.get_text() for page in doc)
 
 
 def load_docx(file_path: str) -> str:
-    """读取 Word 文件"""
+    """读取 Word 文件（段落之间用空行分隔，保留段落语义）"""
     doc = docx.Document(file_path)
-    text = "\n".join([para.text for para in doc.paragraphs])
-    return text
+    return "\n\n".join(para.text for para in doc.paragraphs if para.text.strip())
 
 
 def load_txt(file_path: str) -> str:

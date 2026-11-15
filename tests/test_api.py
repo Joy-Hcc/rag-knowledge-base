@@ -6,8 +6,9 @@ import api
 
 
 @pytest.fixture
-def client():
-    """FastAPI 测试客户端"""
+def client(tmp_path, monkeypatch):
+    """FastAPI 测试客户端（上传目录指向临时目录，避免污染真实 knowledge base）"""
+    monkeypatch.setattr(api, "DOCUMENTS_DIR", str(tmp_path))
     api.llm_client = MagicMock()
     api.documents = {"test.txt": "测试文档内容，关于人工智能。"}
     api._conversations.clear()
@@ -18,8 +19,9 @@ def client():
 
 
 @pytest.fixture
-def clean_client():
+def clean_client(tmp_path, monkeypatch):
     """无文档的测试客户端"""
+    monkeypatch.setattr(api, "DOCUMENTS_DIR", str(tmp_path))
     api.llm_client = MagicMock()
     api.documents = {}
     api._conversations.clear()
@@ -64,7 +66,7 @@ class TestUpload:
     @patch("api.add_document")
     @patch("api.load_document")
     def test_upload_success(self, mock_load, mock_add, client):
-        mock_load.return_value = "文档内容"
+        mock_load.return_value = "文档内容，这是一段足够长的正文内容用于通过有效性校验。"
         mock_add.return_value = 5
         content = b"fake file content"
         resp = client.post(
@@ -91,11 +93,36 @@ class TestUpload:
         )
         assert resp.status_code == 422
 
+    @patch("api.load_document")
+    def test_upload_scanned_pdf_rejected(self, mock_load, client, tmp_path):
+        """扫描件/图片型 PDF 提不出文字时应当拒绝，而不是"上传成功但检索不到"""
+        mock_load.return_value = "  \n "
+        resp = client.post(
+            "/upload",
+            files={"file": ("scan.pdf", b"%PDF-fake", "application/pdf")},
+        )
+        assert resp.status_code == 400
+        assert "提取到有效文字" in resp.json()["detail"]
+        assert not (tmp_path / "scan.pdf").exists()
+
+    @patch("api.add_document")
+    @patch("api.load_document")
+    def test_upload_too_many_chunks(self, mock_load, mock_add, client):
+        """chunk 超限应当回 400 并带上具体原因"""
+        mock_load.return_value = "文档内容，这是一段足够长的正文内容用于通过有效性校验。"
+        mock_add.side_effect = ValueError("文档切分后共 9999 个 chunk，超过单文档上限 2000")
+        resp = client.post(
+            "/upload",
+            files={"file": ("big.txt", b"data", "text/plain")},
+        )
+        assert resp.status_code == 400
+        assert "上限" in resp.json()["detail"]
+
     @patch("api.add_document")
     @patch("api.load_document")
     def test_upload_processing_failure(self, mock_load, mock_add, client):
         """文档处理失败时应清理文件并返回500"""
-        mock_load.return_value = "text"
+        mock_load.return_value = "文档内容，这是一段足够长的正文内容用于通过有效性校验。"
         mock_add.side_effect = Exception("embedding failed")
         resp = client.post(
             "/upload",
@@ -310,6 +337,24 @@ class TestConversationHistory:
         api._conversations.clear()
         assert api._get_history("nonexistent") == []
 
+    def test_get_history_returns_copy(self):
+        """返回副本：调用方改动不应影响存储"""
+        api._conversations.clear()
+        api._append_history("conv-copy", "user", "你好")
+        history = api._get_history("conv-copy")
+        history.append({"role": "user", "content": "被外部塞进来的"})
+        assert len(api._get_history("conv-copy")) == 1
+
+    def test_history_char_budget(self):
+        """历史总字符数超出预算时应从最早的消息开始丢弃"""
+        api._conversations.clear()
+        for i in range(10):
+            api._append_history("conv-budget", "user", "问" * 2000)
+            api._append_history("conv-budget", "assistant", "答" * 2000)
+        history = api._get_history("conv-budget")
+        assert sum(len(m["content"]) for m in history) <= api.MAX_HISTORY_CHARS
+        assert len(history) >= 2
+
 
 class TestDeleteDocument:
     @patch("api.delete_document_chunks")
@@ -322,3 +367,100 @@ class TestDeleteDocument:
     def test_delete_nonexistent(self, client):
         resp = client.delete("/documents/nonexistent.txt")
         assert resp.status_code == 404
+
+
+class TestApiKeyAuth:
+    """API Key 鉴权中间件测试"""
+
+    def test_no_key_configured_allows_all(self, client):
+        resp = client.get("/stats")
+        assert resp.status_code == 200
+
+    def test_rejects_without_header(self, client):
+        with patch("api.API_KEY", "secret"):
+            resp = client.get("/stats")
+            assert resp.status_code == 401
+
+    def test_rejects_wrong_key(self, client):
+        with patch("api.API_KEY", "secret"):
+            resp = client.get("/stats", headers={"X-API-Key": "wrong"})
+            assert resp.status_code == 401
+
+    def test_accepts_correct_key(self, client):
+        with patch("api.API_KEY", "secret"):
+            resp = client.get("/stats", headers={"X-API-Key": "secret"})
+            assert resp.status_code == 200
+
+    def test_health_exempt(self, client):
+        with patch("api.API_KEY", "secret"):
+            resp = client.get("/health")
+            assert resp.status_code == 200
+
+
+class TestRewriteQuery:
+    """多轮对话 query 改写测试"""
+
+    def test_no_conversation_id(self, client):
+        assert api._rewrite_query("原问题", None) == "原问题"
+
+    def test_no_history_returns_original(self, client):
+        assert api._rewrite_query("原问题", "conv-x") == "原问题"
+
+    def test_rewrite_with_history(self, client):
+        api.llm_client.chat.completions.create.return_value.choices[
+            0
+        ].message.content = "改写后的问题"
+        api._append_history("c1", "user", "什么是人工智能？")
+        api._append_history("c1", "assistant", "人工智能是……")
+        assert api._rewrite_query("它有哪些应用？", "c1") == "改写后的问题"
+
+    def test_fallback_on_llm_error(self, client):
+        api.llm_client.chat.completions.create.side_effect = Exception("API down")
+        api._append_history("c2", "user", "问题")
+        assert api._rewrite_query("追问", "c2") == "追问"
+
+    def test_empty_rewrite_falls_back(self, client):
+        api.llm_client.chat.completions.create.return_value.choices[
+            0
+        ].message.content = ""
+        api._append_history("c3", "user", "问题")
+        assert api._rewrite_query("追问", "c3") == "追问"
+
+    @patch("api.search")
+    def test_query_uses_rewritten_query(self, mock_search, client):
+        """/query 应使用改写后的问题去检索，但历史里仍记录原始问题"""
+        mock_search.return_value = [{"text": "片段", "filename": "a.txt"}]
+        rewrite_resp = MagicMock()
+        rewrite_resp.choices[0].message.content = "人工智能有哪些应用"
+        answer_resp = MagicMock()
+        answer_resp.choices[0].message.content = "回答"
+        api.llm_client.chat.completions.create.side_effect = [rewrite_resp, answer_resp]
+        api._append_history("conv-r", "user", "什么是人工智能？")
+        api._append_history("conv-r", "assistant", "人工智能是……")
+
+        resp = client.post(
+            "/query",
+            json={"question": "它有哪些应用？", "conversation_id": "conv-r"},
+        )
+        assert resp.status_code == 200
+        mock_search.assert_called_once_with("人工智能有哪些应用")
+
+
+class TestRateLimit:
+    """限流测试（放在文件末尾：会真实消耗 testclient IP 的 /query 配额，结束后复位）"""
+
+    @patch("api.search")
+    def test_query_rate_limited(self, mock_search, client):
+        mock_search.return_value = [{"text": "片段", "filename": "a.txt"}]
+        api.llm_client.chat.completions.create.return_value.choices[
+            0
+        ].message.content = "回答"
+        try:
+            last = None
+            for _ in range(31):
+                last = client.post("/query", json={"question": "问题"})
+                if last.status_code == 429:
+                    break
+            assert last is not None and last.status_code == 429
+        finally:
+            api.limiter.reset()
