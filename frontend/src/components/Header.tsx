@@ -1,11 +1,21 @@
 ﻿interface HeaderProps {
   onNewConversation?: () => void;
   hasConversation?: boolean;
+  onToggleSidebar?: () => void;
 }
 
-export default function Header({ onNewConversation, hasConversation }: HeaderProps) {
+export default function Header({ onNewConversation, hasConversation, onToggleSidebar }: HeaderProps) {
   return (
-    <header className="min-h-16 border-b border-border bg-surface/95 flex items-center gap-4 px-4 sm:px-6 shrink-0 shadow-sm shadow-zinc-200/40">
+    <header className="min-h-16 border-b border-border bg-surface/95 flex items-center gap-3 px-4 sm:px-6 shrink-0 shadow-sm shadow-zinc-200/40">
+      {onToggleSidebar && (
+        <button
+          onClick={onToggleSidebar}
+          aria-label="文档与统计"
+          className="md:hidden shrink-0 rounded-md border border-border px-2.5 py-2 text-sm text-muted hover:text-accent hover:border-accent/40 transition-colors"
+        >
+          ☰
+        </button>
+      )}
       <div className="flex items-center gap-3 min-w-0">
         <span className="grid h-9 w-9 place-items-center rounded-md bg-accent text-sm font-semibold text-white">
           AI

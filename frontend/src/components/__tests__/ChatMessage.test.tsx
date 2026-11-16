@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import ChatMessage, { type Message } from '../ChatMessage';
 
 describe('ChatMessage', () => {
@@ -76,5 +76,54 @@ describe('ChatMessage', () => {
     expect(screen.getByText('未找到相关信息，请尝试换个问法。')).toBeInTheDocument();
     expect(container.querySelector('.animate-bounce')).toBeNull();
     expect(container.querySelector('.animate-pulse')).toBeNull();
+  });
+
+  it('渲染可展开的引用片段', () => {
+    const message: Message = {
+      id: '7',
+      role: 'assistant',
+      content: '入职满三年后年假为 15 天。',
+      sources: ['policy.txt'],
+      citations: [
+        { filename: 'policy.txt', text: '员工入职满三年后，年假增加到 15 天。' },
+        { filename: 'policy.txt', text: '年假需要提前三个工作日提交申请。' },
+      ],
+      pending: false,
+    };
+
+    render(<ChatMessage message={message} />);
+    expect(screen.getByText(/引用片段 · 2 段/)).toBeInTheDocument();
+    expect(screen.getByText(/年假增加到 15 天/)).toBeInTheDocument();
+    expect(screen.getByText(/提前三个工作日/)).toBeInTheDocument();
+  });
+
+  it('点击"复制回答"会写入剪贴板', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const message: Message = {
+      id: '8',
+      role: 'assistant',
+      content: '要复制的内容',
+      pending: false,
+    };
+
+    render(<ChatMessage message={message} />);
+    fireEvent.click(screen.getByText('复制回答'));
+    expect(writeText).toHaveBeenCalledWith('要复制的内容');
+    expect(await screen.findByText('已复制')).toBeInTheDocument();
+  });
+
+  it('停止生成后显示标记', () => {
+    const message: Message = {
+      id: '9',
+      role: 'assistant',
+      content: '只写了一半',
+      pending: false,
+      stopped: true,
+    };
+
+    render(<ChatMessage message={message} />);
+    expect(screen.getByText('已停止生成')).toBeInTheDocument();
   });
 });

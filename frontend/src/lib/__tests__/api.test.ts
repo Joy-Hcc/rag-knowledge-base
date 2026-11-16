@@ -163,5 +163,73 @@ describe('API', () => {
       expect(errors.length).toBe(1);
       expect(errors[0]).toContain('连接中断');
     });
+
+    it('把 stage 事件透传给 onStage，并带回引用片段', async () => {
+      mockFetch.mockResolvedValueOnce(
+        sseResponse([
+          { type: 'stage', content: 'retrieving' },
+          { type: 'stage', content: 'generating' },
+          { type: 'token', content: '15 天' },
+          {
+            type: 'done',
+            conversation_id: 'c2',
+            sources: ['policy.txt'],
+            citations: [{ filename: 'policy.txt', text: '年假 15 天' }],
+          },
+        ])
+      );
+
+      const stages: string[] = [];
+      let citations: { filename: string; text: string }[] = [];
+      await api.queryStream('q', undefined, {
+        onToken: () => {},
+        onStage: (s) => stages.push(s),
+        onDone: (_id, _sources, c) => {
+          citations = c || [];
+        },
+        onError: (e) => {
+          throw new Error('unexpected onError: ' + e);
+        },
+      });
+
+      expect(stages).toEqual(['retrieving', 'generating']);
+      expect(citations).toHaveLength(1);
+      expect(citations[0].filename).toBe('policy.txt');
+    });
+
+    it('用户主动停止走 onAbort 而不是 onError', async () => {
+      mockFetch.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('Aborted', 'AbortError'))
+            );
+          })
+      );
+
+      const controller = new AbortController();
+      let aborted = false;
+      let errored = false;
+      const p = api.queryStream(
+        'q',
+        undefined,
+        {
+          onToken: () => {},
+          onDone: () => {},
+          onError: () => {
+            errored = true;
+          },
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+        controller.signal
+      );
+      controller.abort();
+      await p;
+
+      expect(aborted).toBe(true);
+      expect(errored).toBe(false);
+    });
   });
 });

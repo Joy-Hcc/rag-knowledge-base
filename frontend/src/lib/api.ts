@@ -6,6 +6,13 @@ export interface QueryResponse {
   answer: string;
   sources: string[];
   conversation_id: string;
+  citations?: Citation[];
+}
+
+/** 一条可展开的引用片段 */
+export interface Citation {
+  filename: string;
+  text: string;
 }
 
 export interface StatsResponse {
@@ -24,8 +31,12 @@ export interface UploadResponse {
 
 export interface StreamCallbacks {
   onToken: (token: string) => void;
-  onDone: (conversationId: string, sources: string[]) => void;
+  onDone: (conversationId: string, sources: string[], citations?: Citation[]) => void;
   onError: (error: string) => void;
+  /** 阶段提示：retrieving（检索中）/ generating（生成中） */
+  onStage?: (stage: string) => void;
+  /** 用户主动取消（区别于超时/网络错误） */
+  onAbort?: () => void;
 }
 
 async function request<T>(
@@ -88,13 +99,27 @@ export async function query(
   );
 }
 
-/** SSE 流式查询 */
+/** SSE 流式查询。传入 signal 可让用户主动停止生成。 */
 export async function queryStream(
   question: string,
   conversationId: string | undefined,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal
 ): Promise<void> {
   const controller = new AbortController();
+  let abortedByUser = false;
+
+  // 用户点"停止"时，中断内部请求并标记为主动取消（超时用另一条路径）
+  const onUserAbort = () => {
+    abortedByUser = true;
+    controller.abort();
+  };
+  if (signal?.aborted) {
+    onUserAbort();
+  } else {
+    signal?.addEventListener("abort", onUserAbort, { once: true });
+  }
+
   // 初始连接超时 30s
   let timer: ReturnType<typeof setTimeout> | null = setTimeout(
     () => controller.abort(),
@@ -160,9 +185,11 @@ export async function queryStream(
           } else if (event.type === "answer") {
             // 后端在"没有文档 / 没有命中"时直接返回整段答案，同样按内容追加
             callbacks.onToken(event.content);
+          } else if (event.type === "stage") {
+            callbacks.onStage?.(event.content);
           } else if (event.type === "done") {
             receivedDone = true;
-            callbacks.onDone(event.conversation_id, event.sources || []);
+            callbacks.onDone(event.conversation_id, event.sources || [], event.citations || []);
           } else if (event.type === "error") {
             receivedDone = true;
             callbacks.onError(event.content);
@@ -174,17 +201,20 @@ export async function queryStream(
     }
 
     // 流结束但没有收到 done/error 事件（网络中断、服务端崩溃等）
-    if (!receivedDone) {
+    if (!receivedDone && !abortedByUser) {
       callbacks.onError("连接中断，请重试");
     }
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
+    if (abortedByUser) {
+      callbacks.onAbort?.();
+    } else if (err instanceof DOMException && err.name === "AbortError") {
       callbacks.onError("请求超时，请稍后重试");
     } else {
       callbacks.onError(err instanceof Error ? err.message : "未知错误");
     }
   } finally {
     if (timer) clearTimeout(timer);
+    signal?.removeEventListener("abort", onUserAbort);
   }
 }
 

@@ -4,10 +4,12 @@ import { useState, useRef, useEffect } from "react";
 
 interface ChatInputProps {
   onSend: (question: string) => Promise<void>;
+  /** 生成中可点击停止 */
+  onStop?: () => void;
   disabled?: boolean;
 }
 
-export default function ChatInput({ onSend, disabled }: ChatInputProps) {
+export default function ChatInput({ onSend, onStop, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -32,6 +34,8 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
+  const stopVisible = Boolean(disabled && onStop);
+
   return (
     <div className="border-t border-border bg-surface p-3 sm:p-4">
       <div className="mx-auto flex max-w-4xl gap-2 items-end">
@@ -50,17 +54,26 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           rows={1}
           className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-6 shadow-inner shadow-zinc-200/40 focus:outline-none focus:ring-2 focus:ring-accent/25 focus:border-accent disabled:opacity-50"
         />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading || disabled}
-          className="shrink-0 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {isLoading ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            "发送"
-          )}
-        </button>
+        {stopVisible ? (
+          <button
+            onClick={onStop}
+            className="shrink-0 rounded-md border border-accent/40 bg-white px-4 py-2.5 text-sm font-medium text-accent hover:bg-accent-light transition-colors"
+          >
+            停止
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading || disabled}
+            className="shrink-0 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              "发送"
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

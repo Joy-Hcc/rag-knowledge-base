@@ -1,19 +1,37 @@
 ﻿"use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatMessage, { type Message } from "./ChatMessage";
 
 interface ChatPanelProps {
   messages: Message[];
+  /** 当前阶段：retrieving / generating，用于提示"检索中/生成中" */
+  stage?: string | null;
 }
 
-export default function ChatPanel({ messages }: ChatPanelProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+const STAGE_LABEL: Record<string, string> = {
+  retrieving: "正在检索文档…",
+  generating: "正在生成回答…",
+};
 
-  // 自动滚动到底部
+export default function ChatPanel({ messages, stage }: ChatPanelProps) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // 只有用户本来就贴在底部时才自动跟随，往上翻历史的时候不再把人拽回来
+  const [stickToBottom, setStickToBottom] = useState(true);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (stickToBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, stage, stickToBottom]);
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setStickToBottom(distance < 80);
+  };
 
   if (messages.length === 0) {
     return (
@@ -39,11 +57,31 @@ export default function ChatPanel({ messages }: ChatPanelProps) {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-      {messages.map((msg) => (
-        <ChatMessage key={msg.id} message={msg} />
-      ))}
-      <div ref={bottomRef} />
+    <div className="relative flex-1 min-h-0">
+      <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-auto p-4 sm:p-6 space-y-4">
+        {messages.map((msg) => (
+          <ChatMessage key={msg.id} message={msg} />
+        ))}
+        {stage && STAGE_LABEL[stage] && (
+          <div className="flex justify-start">
+            <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-muted">
+              {STAGE_LABEL[stage]}
+            </span>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+      {!stickToBottom && (
+        <button
+          onClick={() => {
+            setStickToBottom(true);
+            bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+          }}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted shadow-sm hover:text-accent hover:border-accent/40 transition-colors"
+        >
+          回到最新 ↓
+        </button>
+      )}
     </div>
   );
 }

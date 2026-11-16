@@ -165,6 +165,9 @@ class TestQuery:
         assert "人工智能" in data["answer"]
         assert "test.txt" in data["sources"]
         assert "conversation_id" in data
+        # 非流式接口同样要返回可展示的引用片段
+        assert data["citations"][0]["filename"] == "test.txt"
+        assert "人工智能" in data["citations"][0]["text"]
 
     @patch("api.search")
     def test_query_with_conversation_id(self, mock_search, client):
@@ -239,8 +242,10 @@ class TestStreamQuery:
             if line.startswith("data: "):
                 events.append(json.loads(line[6:]))
         assert len(events) >= 1
-        assert events[0]["type"] == "answer"
-        assert "未找到" in events[0]["content"]
+        # 第一个事件是阶段提示，其后才是 answer
+        assert events[0]["type"] == "stage"
+        answers = [e for e in events if e["type"] == "answer"]
+        assert answers and "未找到" in answers[0]["content"]
 
     @patch("api.search")
     def test_stream_success(self, mock_search, client):
@@ -263,6 +268,10 @@ class TestStreamQuery:
         assert "智能" in resp.text
         # 应该有 done 事件
         assert '"type": "done"' in resp.text or '"type":"done"' in resp.text
+        # 开始检索前先发 stage，避免用户对着空气泡干等
+        assert '"content": "retrieving"' in resp.text or '"content":"retrieving"' in resp.text
+        # done 事件里带引用片段
+        assert '"citations"' in resp.text
 
     @patch("api.search")
     def test_stream_no_llm(self, mock_search, client):

@@ -149,6 +149,23 @@ class AnswerResponse(BaseModel):
     answer: str
     sources: list[str]
     conversation_id: str
+    citations: list[dict] = []
+
+
+def _build_citations(hits: list[dict], limit: int = 6) -> list[dict]:
+    """把命中的 chunk 整理成可展示的引用片段（按文件名+片段去重，保持原顺序）"""
+    citations: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for h in hits:
+        snippet = " ".join(h["text"].split())
+        key = (h["filename"], snippet)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append({"filename": h["filename"], "text": snippet[:400]})
+        if len(citations) >= limit:
+            break
+    return citations
 
 
 @app.post("/upload")
@@ -302,6 +319,7 @@ async def ask_question(request: Request, body: QuestionRequest):
         f"【文档: {h['filename']}】\n{h['text']}" for h in hits
     )
     source_files = list(dict.fromkeys(h["filename"] for h in hits))
+    citations = _build_citations(hits)
 
     # 构建消息（含历史）
     messages = _build_messages(body.question, context, conv_id)
@@ -323,6 +341,7 @@ async def ask_question(request: Request, body: QuestionRequest):
         answer=answer,
         sources=source_files,
         conversation_id=conv_id,
+        citations=citations,
     )
 
 
@@ -342,6 +361,8 @@ async def ask_question_stream(request: Request, body: QuestionRequest):
         return StreamingResponse(empty_gen(), media_type="text/event-stream")
 
     async def event_generator():
+        # 先告诉前端"在检索"，避免用户对着空气泡干等（改写+检索+重排通常 2-8s）
+        yield f"data: {json.dumps({'type': 'stage', 'content': 'retrieving'}, ensure_ascii=False)}\n\n"
         # RAG检索（在 generator 内部，失败时返回 SSE error 而非 500）
         try:
             search_query = await asyncio.to_thread(_rewrite_query, body.question, conv_id)
@@ -356,14 +377,16 @@ async def ask_question_stream(request: Request, body: QuestionRequest):
             _append_history(conv_id, "user", body.question)
             _append_history(conv_id, "assistant", answer)
             yield f"data: {json.dumps({'type': 'answer', 'content': answer}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id, 'sources': []}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id, 'sources': [], 'citations': []}, ensure_ascii=False)}\n\n"
             return
 
         context = "\n\n---\n\n".join(
             f"【文档: {h['filename']}】\n{h['text']}" for h in hits
         )
         source_files = list(dict.fromkeys(h["filename"] for h in hits))
+        citations = _build_citations(hits)
         messages = _build_messages(body.question, context, conv_id)
+        yield f"data: {json.dumps({'type': 'stage', 'content': 'generating'}, ensure_ascii=False)}\n\n"
 
         full_answer: list[str] = []
         token_queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -433,7 +456,7 @@ async def ask_question_stream(request: Request, body: QuestionRequest):
         _append_history(conv_id, "user", body.question)
         _append_history(conv_id, "assistant", answer)
 
-        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id, 'sources': source_files}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id, 'sources': source_files, 'citations': citations}, ensure_ascii=False)}\n\n"
 
     async def limited_generator():
         # 并发上限：超出 10 个流式请求时排队等待
