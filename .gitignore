@@ -26,6 +26,12 @@ documents/*.txt
 .vscode/
 .idea/
 
+# 工具本地数据（WorkBuddy 记忆日志等，不入库）
+.workbuddy/
+
+# Orca 误初始化出来的空仓库（嵌套在项目里，不是项目内容）
+知识库/
+
 # OS
 .DS_Store
 Thumbs.db
